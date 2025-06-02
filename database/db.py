@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, DuplicateKeyError
 from config import (
     DATABASE_PATH, USE_MONGODB, DB_URI, DB_NAME,
     MONGODB_USERS_COLLECTION, MONGODB_SETTINGS_COLLECTION, 
@@ -39,8 +39,8 @@ class MongoDBManager:
             self.db = self.client[DB_NAME]
             self.connected = True
             
-            # Create indexes
-            await self._create_indexes()
+            # Clean and create indexes
+            await self._clean_and_create_indexes()
             
             logger.info(f"✅ MongoDB connected successfully to database: {DB_NAME}")
             return True
@@ -54,18 +54,28 @@ class MongoDBManager:
             self.connected = False
             return False
     
-    async def _create_indexes(self):
-        """Create database indexes for better performance."""
+    async def _clean_and_create_indexes(self):
+        """Clean duplicate null values and create indexes."""
         try:
+            # Clean users collection first
+            await self._clean_users_collection()
+            
             # Users collection indexes
             users_collection = self.db[MONGODB_USERS_COLLECTION]
-            await users_collection.create_index("user_id", unique=True)
+            try:
+                await users_collection.create_index("user_id", unique=True)
+            except DuplicateKeyError:
+                logger.warning("Users user_id index already exists, skipping...")
+            
             await users_collection.create_index("username")
             await users_collection.create_index("join_date")
             
             # Settings collection indexes
             settings_collection = self.db[MONGODB_SETTINGS_COLLECTION]
-            await settings_collection.create_index("user_id", unique=True)
+            try:
+                await settings_collection.create_index("user_id", unique=True)
+            except DuplicateKeyError:
+                logger.warning("Settings user_id index already exists, skipping...")
             
             # Logs collection indexes
             logs_collection = self.db[MONGODB_LOGS_COLLECTION]
@@ -87,6 +97,24 @@ class MongoDBManager:
         except Exception as e:
             logger.error(f"Error creating MongoDB indexes: {e}")
     
+    async def _clean_users_collection(self):
+        """Clean users collection from null user_id values."""
+        try:
+            users_collection = self.db[MONGODB_USERS_COLLECTION]
+            
+            # Remove documents with null user_id
+            result = await users_collection.delete_many({"user_id": None})
+            if result.deleted_count > 0:
+                logger.info(f"🧹 Cleaned {result.deleted_count} invalid user records")
+            
+            # Remove documents with missing user_id field
+            result = await users_collection.delete_many({"user_id": {"$exists": False}})
+            if result.deleted_count > 0:
+                logger.info(f"🧹 Cleaned {result.deleted_count} records missing user_id")
+            
+        except Exception as e:
+            logger.error(f"Error cleaning users collection: {e}")
+    
     async def disconnect(self):
         """Disconnect from MongoDB."""
         if self.client:
@@ -101,8 +129,13 @@ class MongoDBManager:
             if not self.connected:
                 return False
             
+            # Validate user_id
+            if not user_id or user_id == 0:
+                logger.error(f"Invalid user_id: {user_id}")
+                return False
+            
             user_data = {
-                "user_id": user_id,
+                "user_id": int(user_id),  # Ensure it's an integer
                 "username": username,
                 "first_name": first_name,
                 "join_date": datetime.utcnow(),
@@ -114,7 +147,7 @@ class MongoDBManager:
             
             # Use upsert to avoid duplicates
             await self.db[MONGODB_USERS_COLLECTION].update_one(
-                {"user_id": user_id},
+                {"user_id": int(user_id)},
                 {"$set": user_data},
                 upsert=True
             )
@@ -132,7 +165,7 @@ class MongoDBManager:
             if not self.connected:
                 return None
             
-            user = await self.db[MONGODB_USERS_COLLECTION].find_one({"user_id": user_id})
+            user = await self.db[MONGODB_USERS_COLLECTION].find_one({"user_id": int(user_id)})
             return user
             
         except Exception as e:
@@ -145,7 +178,10 @@ class MongoDBManager:
             if not self.connected:
                 return []
             
-            cursor = self.db[MONGODB_USERS_COLLECTION].find().sort("join_date", -1)
+            # Only get users with valid user_id
+            cursor = self.db[MONGODB_USERS_COLLECTION].find(
+                {"user_id": {"$exists": True, "$ne": None}}
+            ).sort("join_date", -1)
             users = await cursor.to_list(length=None)
             return users
             
@@ -159,7 +195,10 @@ class MongoDBManager:
             if not self.connected:
                 return 0
             
-            count = await self.db[MONGODB_USERS_COLLECTION].count_documents({})
+            # Only count users with valid user_id
+            count = await self.db[MONGODB_USERS_COLLECTION].count_documents(
+                {"user_id": {"$exists": True, "$ne": None}}
+            )
             return count
             
         except Exception as e:
@@ -173,7 +212,7 @@ class MongoDBManager:
                 return False
             
             await self.db[MONGODB_USERS_COLLECTION].update_one(
-                {"user_id": user_id},
+                {"user_id": int(user_id)},
                 {"$set": {"last_active": datetime.utcnow()}}
             )
             return True
@@ -189,15 +228,20 @@ class MongoDBManager:
             if not self.connected:
                 return False
             
+            # Validate user_id
+            if not user_id or user_id == 0:
+                logger.error(f"Invalid user_id for settings: {user_id}")
+                return False
+            
             settings_data = {
-                "user_id": user_id,
+                "user_id": int(user_id),
                 **DEFAULT_SETTINGS,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
             
             await self.db[MONGODB_SETTINGS_COLLECTION].update_one(
-                {"user_id": user_id},
+                {"user_id": int(user_id)},
                 {"$set": settings_data},
                 upsert=True
             )
@@ -215,7 +259,7 @@ class MongoDBManager:
             if not self.connected:
                 return DEFAULT_SETTINGS
             
-            settings = await self.db[MONGODB_SETTINGS_COLLECTION].find_one({"user_id": user_id})
+            settings = await self.db[MONGODB_SETTINGS_COLLECTION].find_one({"user_id": int(user_id)})
             
             if settings:
                 # Remove MongoDB specific fields
@@ -240,7 +284,7 @@ class MongoDBManager:
                 return False
             
             await self.db[MONGODB_SETTINGS_COLLECTION].update_one(
-                {"user_id": user_id},
+                {"user_id": int(user_id)},
                 {
                     "$set": {
                         setting_name: value,
@@ -267,7 +311,7 @@ class MongoDBManager:
                 return False
             
             log_data = {
-                "user_id": user_id,
+                "user_id": int(user_id),
                 "file_name": file_name,
                 "input_size": input_size,
                 "output_size": output_size,
@@ -282,7 +326,7 @@ class MongoDBManager:
             # Update user stats
             if status == "success":
                 await self.db[MONGODB_USERS_COLLECTION].update_one(
-                    {"user_id": user_id},
+                    {"user_id": int(user_id)},
                     {
                         "$inc": {
                             "total_videos_processed": 1,
@@ -305,10 +349,10 @@ class MongoDBManager:
                 return False
             
             action_data = {
-                "admin_id": admin_id,
+                "admin_id": int(admin_id),
                 "action_type": action_type,
                 "action_details": action_details,
-                "target_user_id": target_user_id,
+                "target_user_id": int(target_user_id) if target_user_id else None,
                 "timestamp": datetime.utcnow()
             }
             
@@ -364,12 +408,14 @@ class MongoDBManager:
             # Users active today
             today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             active_today = await self.db[MONGODB_USERS_COLLECTION].count_documents({
-                "last_active": {"$gte": today_start}
+                "last_active": {"$gte": today_start},
+                "user_id": {"$exists": True, "$ne": None}
             })
             
             # New users today
             new_today = await self.db[MONGODB_USERS_COLLECTION].count_documents({
-                "join_date": {"$gte": today_start}
+                "join_date": {"$gte": today_start},
+                "user_id": {"$exists": True, "$ne": None}
             })
             
             return {
@@ -480,7 +526,6 @@ async def init_database():
         try:
             success = await mongodb_manager.connect()
             if success:
-                logger.info("✅ Using MongoDB for data storage")
                 return True
             else:
                 logger.warning("⚠️ MongoDB failed, falling back to SQLite")
