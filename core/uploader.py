@@ -1,4 +1,3 @@
-# core/uploader.py
 import logging
 import os
 from telegram import InputMediaVideo, InputMediaDocument
