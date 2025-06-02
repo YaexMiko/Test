@@ -1,8 +1,16 @@
 # config.py - Configuration file
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Disable HTTP logs at config level too
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('aiohttp').setLevel(logging.WARNING)
 
 # Bot Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8191627683:AAEaD3MzrdkcwhAj6eiATKLAwPzQQhbxVCI')
@@ -84,3 +92,66 @@ UPLOAD_TIMEOUT = 600    # 10 minutes
 # MTProto client settings
 USE_MTPROTO_FOR_LARGE_FILES = True
 MTPROTO_SESSION_STRING = 'bot_session'
+
+# Logging configuration
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+ENABLE_HTTP_LOGS = os.getenv('ENABLE_HTTP_LOGS', 'false').lower() == 'true'
+
+# Additional logging filters
+if not ENABLE_HTTP_LOGS:
+    # Comprehensive list of noisy loggers to silence
+    NOISY_LOGGERS = [
+        'httpx',
+        'httpcore',
+        'telegram',
+        'urllib3',
+        'aiohttp',
+        'asyncio',
+        'charset_normalizer',
+        'multipart',
+        'pyrogram',
+        'h11',
+        'h2',
+        'hpack'
+    ]
+    
+    for logger_name in NOISY_LOGGERS:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+# Bot status messages
+BOT_MESSAGES = {
+    'start': "🚀 Video Encode Bot starting...",
+    'ready': "📡 Bot is ready to receive files!",
+    'stop': "🛑 Bot stopped by user",
+    'crash': "❌ Bot crashed",
+    'download_start': "📥 Downloading file...",
+    'download_complete': "✅ Download completed!",
+    'encode_start': "🔄 Encoding video...",
+    'encode_complete': "✅ Encoding completed!",
+    'upload_start': "📤 Uploading video...",
+    'upload_complete': "✅ Upload completed!"
+}
+
+# Performance settings
+CONCURRENT_DOWNLOADS = 3  # Maximum concurrent downloads
+CONCURRENT_ENCODES = 2    # Maximum concurrent encodes
+MAX_QUEUE_SIZE = 10       # Maximum queue size for pending jobs
+
+# Feature flags
+ENABLE_LARGE_FILE_SUPPORT = True
+ENABLE_PROGRESS_TRACKING = True
+ENABLE_THUMBNAIL_SUPPORT = True
+ENABLE_WATERMARK_SUPPORT = False  # Coming soon
+ENABLE_METADATA_SUPPORT = False   # Coming soon
+ENABLE_AUTO_RENAME = False        # Coming soon
+
+# Debug settings
+DEBUG_MODE = os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+VERBOSE_LOGGING = os.getenv('VERBOSE_LOGGING', 'false').lower() == 'true'
+
+if DEBUG_MODE:
+    logging.getLogger().setLevel(logging.DEBUG)
+elif VERBOSE_LOGGING:
+    # Enable more detailed logging for core components
+    logging.getLogger('core').setLevel(logging.DEBUG)
+    logging.getLogger('commands').setLevel(logging.DEBUG)
