@@ -1,4 +1,3 @@
-# core/downloader.py
 import logging
 import os
 import aiohttp
