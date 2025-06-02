@@ -2,10 +2,15 @@ import asyncio
 import logging
 import sys
 import os
-import signal
 
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Disable HTTP logs immediately before other imports
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from config import BOT_TOKEN
@@ -18,6 +23,7 @@ from utils.logger import setup_logger
 
 # Setup logging
 setup_logger()
+
 logger = logging.getLogger(__name__)
 
 def main():
@@ -40,7 +46,8 @@ def main():
     application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
     
     # Start the bot
-    logger.info("Starting bot...")
+    logger.info("🚀 Video Encode Bot starting...")
+    logger.info("📡 Bot is ready to receive files!")
     
     # Use run_polling without asyncio.run()
     application.run_polling(
@@ -54,4 +61,9 @@ def main():
     )
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Bot crashed: {e}")
