@@ -19,7 +19,7 @@ async def encode_video(input_path, settings, status_message=None):
         # Ensure temp directory exists
         os.makedirs("temp", exist_ok=True)
         
-        # Get video duration first
+        # Get video duration first for progress tracking
         duration = await get_video_duration(input_path)
         if not duration:
             logger.warning("Could not get video duration, progress tracking disabled")
@@ -46,115 +46,201 @@ async def encode_video(input_path, settings, status_message=None):
 async def run_ffmpeg_with_progress(cmd, duration, status_message=None):
     """Run FFmpeg command with real-time progress tracking."""
     try:
-        # Add progress reporting to FFmpeg command
-        progress_cmd = cmd[:-1] + ["-progress", "pipe:1", "-nostats"] + [cmd[-1]]
+        # Create a temporary progress file
+        progress_file = "temp/ffmpeg_progress.txt"
+        
+        # Modify command to output progress to file
+        progress_cmd = cmd[:-1] + [
+            "-progress", progress_file,
+            "-nostats",
+            "-loglevel", "error"
+        ] + [cmd[-1]]
+        
+        logger.info(f"Starting FFmpeg with progress tracking...")
         
         # Start FFmpeg process
         process = await asyncio.create_subprocess_exec(
             *progress_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            stdin=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE
         )
         
-        # Track progress
-        last_update_time = asyncio.get_event_loop().time()
-        
-        async def read_progress():
-            nonlocal last_update_time
-            current_time = "00:00:00"
-            
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                    
-                line = line.decode().strip()
-                
-                # Parse progress information
-                if line.startswith("out_time="):
-                    current_time = line.split("=")[1]
-                    
-                    # Update progress every 3 seconds
-                    current_loop_time = asyncio.get_event_loop().time()
-                    if current_loop_time - last_update_time >= 3:
-                        await update_encoding_progress(current_time, duration, status_message)
-                        last_update_time = current_loop_time
-        
-        # Start progress tracking
-        progress_task = asyncio.create_task(read_progress())
+        # Start progress monitoring task
+        progress_task = None
+        if duration and status_message:
+            progress_task = asyncio.create_task(
+                monitor_progress(progress_file, duration, status_message)
+            )
         
         # Wait for process to complete
         stdout, stderr = await process.communicate()
         
-        # Cancel progress tracking
-        progress_task.cancel()
+        # Stop progress monitoring
+        if progress_task:
+            progress_task.cancel()
+            try:
+                await progress_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Clean up progress file
+        try:
+            if os.path.exists(progress_file):
+                os.remove(progress_file)
+        except:
+            pass
         
         if process.returncode == 0:
             if status_message:
-                await status_message.edit_text("✅ Video encoding completed successfully!")
+                await status_message.edit_text(
+                    "✅ **Video Encoding Completed!**\n\n"
+                    "🎬 Processing finished successfully\n"
+                    "📁 Preparing final output...",
+                    parse_mode='Markdown'
+                )
             return True
         else:
             logger.error(f"FFmpeg error: {stderr.decode()}")
             if status_message:
-                await status_message.edit_text(f"❌ Encoding failed: {stderr.decode()[:100]}...")
+                error_msg = stderr.decode()[:200] if stderr else "Unknown encoding error"
+                await status_message.edit_text(
+                    f"❌ **Encoding Failed**\n\n"
+                    f"Error: {error_msg}\n\n"
+                    f"Try different settings or file format.",
+                    parse_mode='Markdown'
+                )
             return False
             
     except Exception as e:
         logger.error(f"Error running FFmpeg with progress: {e}")
-        return False
-
-async def update_encoding_progress(current_time, total_duration, status_message):
-    """Update encoding progress message."""
-    try:
-        if not status_message or not total_duration:
-            return
-        
-        # Convert time strings to seconds
-        current_seconds = time_to_seconds(current_time)
-        total_seconds = time_to_seconds(total_duration)
-        
-        if total_seconds > 0:
-            progress_percent = min((current_seconds / total_seconds) * 100, 100)
-            
-            # Create progress bar
-            progress_bar = create_progress_bar(progress_percent)
-            
-            # Calculate remaining time
-            if progress_percent > 0:
-                elapsed_time = current_seconds
-                estimated_total = elapsed_time / (progress_percent / 100)
-                remaining_time = max(0, estimated_total - elapsed_time)
-                remaining_str = seconds_to_time(remaining_time)
-            else:
-                remaining_str = "Calculating..."
-            
-            # Update message
+        if status_message:
             await status_message.edit_text(
-                f"🔄 **Encoding Video**\n\n"
-                f"{progress_bar}\n"
-                f"📊 Progress: {progress_percent:.1f}%\n"
-                f"⏱️ Time: {current_time} / {total_duration}\n"
-                f"⏳ Remaining: ~{remaining_str}\n"
-                f"🎬 Processing...",
+                f"❌ **Encoding Error**\n\n"
+                f"Process failed: {str(e)[:100]}\n\n"
+                f"Please try again.",
                 parse_mode='Markdown'
             )
+        return False
+
+async def monitor_progress(progress_file, duration, status_message):
+    """Monitor FFmpeg progress from file."""
+    try:
+        last_update_time = 0
+        duration_seconds = time_to_seconds(duration) if duration else 0
+        
+        while True:
+            try:
+                # Check if progress file exists and read it
+                if os.path.exists(progress_file):
+                    with open(progress_file, 'r') as f:
+                        content = f.read()
+                    
+                    # Parse progress
+                    current_time = extract_progress_time(content)
+                    
+                    if current_time and duration_seconds > 0:
+                        current_seconds = time_to_seconds(current_time)
+                        
+                        # Update progress every 3 seconds
+                        current_loop_time = asyncio.get_event_loop().time()
+                        if current_loop_time - last_update_time >= 3:
+                            await update_encoding_progress(
+                                current_time, duration, current_seconds, 
+                                duration_seconds, status_message
+                            )
+                            last_update_time = current_loop_time
+                
+                # Wait before next check
+                await asyncio.sleep(1)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Progress monitoring error: {e}")
+                await asyncio.sleep(2)
+                
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Error in progress monitoring: {e}")
+
+def extract_progress_time(content):
+    """Extract current time from FFmpeg progress output."""
+    try:
+        # Look for out_time_ms or out_time
+        lines = content.strip().split('\n')
+        
+        for line in lines:
+            if line.startswith('out_time='):
+                time_str = line.split('=')[1].strip()
+                return time_str
+            elif line.startswith('out_time_ms='):
+                # Convert microseconds to time
+                microseconds = int(line.split('=')[1])
+                seconds = microseconds / 1000000
+                return seconds_to_time(seconds)
+        
+        return None
         
     except Exception as e:
-        logger.error(f"Error updating progress: {e}")
+        logger.debug(f"Error extracting progress time: {e}")
+        return None
 
-def create_progress_bar(percentage, length=20):
+async def update_encoding_progress(current_time, total_duration, current_seconds, total_seconds, status_message):
+    """Update encoding progress message."""
+    try:
+        if not status_message:
+            return
+        
+        progress_percent = min((current_seconds / total_seconds) * 100, 100)
+        
+        # Create progress bar
+        progress_bar = create_progress_bar(progress_percent)
+        
+        # Calculate remaining time
+        if progress_percent > 0 and progress_percent < 100:
+            elapsed_time = current_seconds
+            estimated_total = elapsed_time / (progress_percent / 100)
+            remaining_time = max(0, estimated_total - elapsed_time)
+            remaining_str = seconds_to_time(remaining_time)
+        else:
+            remaining_str = "Calculating..."
+        
+        # Calculate encoding speed
+        fps_info = ""
+        
+        # Update message
+        await status_message.edit_text(
+            f"🔄 **Encoding Video**\n\n"
+            f"{progress_bar}\n\n"
+            f"📊 Progress: {progress_percent:.1f}%\n"
+            f"⏱️ Time: {current_time} / {total_duration}\n"
+            f"⏳ Remaining: ~{remaining_str}\n"
+            f"🎬 Processing video stream...",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.debug(f"Error updating progress: {e}")
+
+def create_progress_bar(percentage, length=15):
     """Create a visual progress bar."""
-    filled = int(length * percentage / 100)
-    empty = length - filled
-    
-    # Use different Unicode characters for better visual
-    bar = "█" * filled + "░" * empty
-    return f"[{bar}] {percentage:.1f}%"
+    try:
+        filled = int(length * percentage / 100)
+        empty = length - filled
+        
+        # Use Unicode characters for progress bar
+        bar = "█" * filled + "░" * empty
+        return f"[{bar}] {percentage:.1f}%"
+    except:
+        return f"Progress: {percentage:.1f}%"
 
 def time_to_seconds(time_str):
     """Convert time string (HH:MM:SS.ms) to seconds."""
     try:
+        if isinstance(time_str, (int, float)):
+            return float(time_str)
+        
         # Handle different time formats
         if "." in time_str:
             time_str = time_str.split(".")[0]  # Remove milliseconds
@@ -174,9 +260,10 @@ def time_to_seconds(time_str):
 def seconds_to_time(seconds):
     """Convert seconds to time string (HH:MM:SS)."""
     try:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
+        seconds = int(seconds)
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     except:
         return "00:00:00"
@@ -329,3 +416,28 @@ async def get_encoding_stats(file_path):
     except Exception as e:
         logger.error(f"Error getting encoding stats: {e}")
         return None
+
+# Fallback encoding function without progress
+async def encode_video_simple(input_path, output_path, settings):
+    """Simple encoding without progress tracking (fallback)."""
+    try:
+        cmd = build_ffmpeg_command(input_path, output_path, settings)
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode == 0:
+            logger.info("Simple encoding completed successfully")
+            return True
+        else:
+            logger.error(f"Simple encoding failed: {stderr.decode()}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error in simple encoding: {e}")
+        return False
