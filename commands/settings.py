@@ -87,7 +87,13 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     
     if data == "close_settings":
-        await query.edit_message_caption(caption="Settings closed.")
+        try:
+            await query.edit_message_caption(caption="Settings closed.")
+        except:
+            try:
+                await query.edit_message_text(text="Settings closed.")
+            except Exception as e:
+                logger.error(f"Error closing settings: {e}")
         return
     
     elif data == "toggle_upload_mode":
@@ -134,15 +140,36 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         update_user_setting(user_id, 'crf', crf)
         await refresh_settings_menu(query, user_id)
     
+    elif data.startswith("aspect_"):
+        aspect_ratio = data.split("_")[1]
+        update_user_setting(user_id, 'aspect_ratio', aspect_ratio)
+        await refresh_settings_menu(query, user_id)
+    
     elif data == "back_to_settings":
+        await refresh_settings_menu(query, user_id)
+    
+    elif data == "delete_thumbnail":
+        from utils.thumbnails import delete_user_thumbnail
+        success = delete_user_thumbnail(user_id)
+        if success:
+            update_user_setting(user_id, 'custom_thumbnail', None)
         await refresh_settings_menu(query, user_id)
     
     # Handle coming soon features
     elif data in ["set_metadata", "set_watermark", "set_auto_rename"]:
-        await query.edit_message_caption(
-            caption="🚧 **Feature Coming Soon** 🚧\n\nThis feature is under development and will be available in the next update!",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back_to_settings")]])
-        )
+        try:
+            await query.edit_message_caption(
+                caption="🚧 **Feature Coming Soon** 🚧\n\nThis feature is under development and will be available in the next update!",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back_to_settings")]])
+            )
+        except:
+            try:
+                await query.edit_message_text(
+                    text="🚧 **Feature Coming Soon** 🚧\n\nThis feature is under development and will be available in the next update!",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="back_to_settings")]])
+                )
+            except Exception as e:
+                logger.error(f"Error showing coming soon message: {e}")
 
 async def show_resolution_menu(query, user_id):
     """Show resolution selection menu."""
@@ -163,10 +190,19 @@ async def show_resolution_menu(query, user_id):
         ]
     ]
     
-    await query.edit_message_caption(
-        caption="Choose from Below Buttons",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_caption(
+            caption="Choose from Below Buttons",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except:
+        try:
+            await query.edit_message_text(
+                text="Choose from Below Buttons",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing resolution menu: {e}")
 
 async def show_vcodec_menu(query, user_id):
     """Show video codec selection menu."""
@@ -179,10 +215,19 @@ async def show_vcodec_menu(query, user_id):
         ]
     ]
     
-    await query.edit_message_caption(
-        caption="Choose from Below Buttons",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_caption(
+            caption="Choose from Below Buttons",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except:
+        try:
+            await query.edit_message_text(
+                text="Choose from Below Buttons",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing vcodec menu: {e}")
 
 async def show_bits_menu(query, user_id):
     """Show bit depth selection menu."""
@@ -195,10 +240,19 @@ async def show_bits_menu(query, user_id):
         ]
     ]
     
-    await query.edit_message_caption(
-        caption="Choose from Below Buttons",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_caption(
+            caption="Choose from Below Buttons",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except:
+        try:
+            await query.edit_message_text(
+                text="Choose from Below Buttons",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing bits menu: {e}")
 
 async def show_crf_menu(query, user_id):
     """Show CRF selection menu."""
@@ -218,10 +272,19 @@ async def show_crf_menu(query, user_id):
         InlineKeyboardButton("Close", callback_data="close_settings")
     ])
     
-    await query.edit_message_caption(
-        caption="Choose from Below Buttons",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_caption(
+            caption="Choose from Below Buttons",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except:
+        try:
+            await query.edit_message_text(
+                text="Choose from Below Buttons",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing CRF menu: {e}")
 
 async def show_aspect_ratio_menu(query, user_id):
     """Show aspect ratio selection menu."""
@@ -234,10 +297,19 @@ async def show_aspect_ratio_menu(query, user_id):
         ]
     ]
     
-    await query.edit_message_caption(
-        caption="Choose from Below Buttons",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_caption(
+            caption="Choose from Below Buttons",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except:
+        try:
+            await query.edit_message_text(
+                text="Choose from Below Buttons",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.error(f"Error showing aspect ratio menu: {e}")
 
 async def handle_thumbnail_setting(query, user_id):
     """Handle thumbnail setting."""
@@ -253,10 +325,19 @@ async def handle_thumbnail_setting(query, user_id):
             ]
         ]
         
-        await query.edit_message_caption(
-            caption="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await query.edit_message_caption(
+                caption="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except:
+            try:
+                await query.edit_message_text(
+                    text="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            except Exception as e:
+                logger.error(f"Error showing thumbnail setting: {e}")
     else:
         # Show instruction to set thumbnail
         keyboard = [
@@ -266,10 +347,19 @@ async def handle_thumbnail_setting(query, user_id):
             ]
         ]
         
-        await query.edit_message_caption(
-            caption="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await query.edit_message_caption(
+                caption="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except:
+            try:
+                await query.edit_message_text(
+                    text="Send a photo to save it as custom thumbnail.\nTimeout: 60 sec",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            except Exception as e:
+                logger.error(f"Error showing thumbnail setting: {e}")
 
 async def refresh_settings_menu(query, user_id):
     """Refresh the settings menu with updated values."""
@@ -314,8 +404,26 @@ async def refresh_settings_menu(query, user_id):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await query.edit_message_caption(
-        caption=settings_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    try:
+        # Try to edit the caption first (if the message has a photo)
+        await query.edit_message_caption(
+            caption=settings_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    except:
+        # If that fails, try to edit the text (if it's a text message)
+        try:
+            await query.edit_message_text(
+                text=settings_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            # If both fail, send a new message
+            logger.error(f"Error refreshing settings menu: {e}")
+            await query.message.reply_text(
+                text=settings_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
