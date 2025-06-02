@@ -18,6 +18,7 @@ from commands.start import start_command
 from commands.help import help_command
 from commands.settings import settings_command, handle_settings_callback
 from commands.encode import handle_media
+from commands.admin import admin_command, stats_command, users_command, broadcast_command, handle_admin_callback
 from database.db import init_database
 from utils.logger import setup_logger
 
@@ -34,13 +35,20 @@ def main():
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Add handlers
+    # Add regular command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("settings", settings_command))
     
-    # Callback query handler for settings
-    application.add_handler(CallbackQueryHandler(handle_settings_callback))
+    # Add admin command handlers
+    application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("users", users_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
+    
+    # Callback query handlers
+    application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(?!admin).*"))
+    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin.*"))
     
     # Message handlers for media
     application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
@@ -48,6 +56,7 @@ def main():
     # Start the bot
     logger.info("🚀 Video Encode Bot starting...")
     logger.info("📡 Bot is ready to receive files!")
+    logger.info("👑 Admin features enabled!")
     
     # Use run_polling without asyncio.run()
     application.run_polling(
