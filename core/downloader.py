@@ -1,7 +1,7 @@
 import logging
 import os
 import asyncio
-from config import TEMP_DIR, MAX_FILE_SIZE, TELEGRAM_BOT_API_LIMIT, USE_MTPROTO_FOR_LARGE_FILES, API_ID, API_HASH
+from config import TEMP_DIR, MAX_FILE_SIZE, TELEGRAM_BOT_API_LIMIT, USE_MTPROTO_FOR_LARGE_FILES, API_ID, API_HASH, BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,15 @@ async def init_mtproto_client():
     global mtproto_client
     if PYROGRAM_AVAILABLE and USE_MTPROTO_FOR_LARGE_FILES and not mtproto_client:
         try:
+            # Create session file directory
+            os.makedirs('sessions', exist_ok=True)
+            
             mtproto_client = Client(
-                "bot_session",
-                api_id=API_ID,
+                name="bot_session",
+                api_id=int(API_ID),
                 api_hash=API_HASH,
-                bot_token=os.getenv('BOT_TOKEN')
+                bot_token=BOT_TOKEN,
+                workdir="sessions"
             )
             await mtproto_client.start()
             logger.info("MTProto client initialized for large file support")
@@ -74,7 +78,7 @@ async def download_media(message, status_message=None):
         
         if use_mtproto:
             logger.info(f"Using MTProto for large file: {file_size / (1024*1024):.1f}MB")
-            return await download_with_mtproto(message, file_name, status_message, file_size)
+            return await download_with_mtproto(message, file_obj, file_name, status_message, file_size)
         else:
             logger.info(f"Using Bot API for file: {file_size / (1024*1024):.1f}MB")
             return await download_with_bot_api(message, file_obj, file_name, status_message, file_size)
@@ -134,10 +138,10 @@ async def download_with_bot_api(message, file_obj, file_name, status_message=Non
     except Exception as e:
         if "File is too big" in str(e):
             logger.info("File too big for Bot API, trying MTProto...")
-            return await download_with_mtproto(message, file_name, status_message, file_size)
+            return await download_with_mtproto(message, file_obj, file_name, status_message, file_size)
         raise e
 
-async def download_with_mtproto(message, file_name, status_message=None, file_size=None):
+async def download_with_mtproto(message, file_obj, file_name, status_message=None, file_size=None):
     """Download file using MTProto client (for large files)."""
     try:
         if not PYROGRAM_AVAILABLE:
@@ -166,19 +170,18 @@ async def download_with_mtproto(message, file_name, status_message=None, file_si
                 f"⏳ This may take a while..."
             )
         
-        # Download using pyrogram
+        # Download using pyrogram directly with file_id
         file_path = os.path.join(TEMP_DIR, file_name)
         
-        # Get message from pyrogram client
-        chat_id = message.chat.id
-        message_id = message.message_id
-        
-        # Download the file
         start_time = asyncio.get_event_loop().time()
+        
+        # Use the file_id from the telegram file object
+        file_id = file_obj.file_id
         downloaded_file = await mtproto_client.download_media(
-            f"{chat_id}_{message_id}",
+            file_id,
             file_name=file_path
         )
+        
         download_time = asyncio.get_event_loop().time() - start_time
         
         # Update status
@@ -198,8 +201,13 @@ async def download_with_mtproto(message, file_name, status_message=None, file_si
     except Exception as e:
         logger.error(f"MTProto download failed: {e}")
         if status_message:
-            await status_message.edit_text(f"❌ Large file download failed: {str(e)}")
-        return None
+            await status_message.edit_text(
+                f"❌ Large file download failed.\n"
+                f"Falling back to Bot API method...\n"
+                f"Note: Files >20MB may not work with Bot API."
+            )
+        # Fallback to Bot API
+        return await download_with_bot_api(message, file_obj, file_name, status_message, file_size)
 
 async def download_with_progress(file, file_path, status_message=None, total_size=None):
     """Download file with progress updates."""
@@ -225,7 +233,22 @@ async def download_with_progress(file, file_path, status_message=None, total_siz
         logger.error(f"Error in download_with_progress: {e}")
         raise e
 
-# ... (rest of the utility functions remain the same)
+async def download_thumbnail(file_id, user_id):
+    """Download thumbnail from Telegram."""
+    try:
+        # Create thumbnails directory if it doesn't exist
+        os.makedirs('thumbnails', exist_ok=True)
+        
+        # Implementation for thumbnail download
+        # This would typically involve getting the file and saving it
+        logger.info(f"Downloading thumbnail for user {user_id}")
+        
+        # Placeholder implementation
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error downloading thumbnail: {e}")
+        return None
 
 def get_file_size_mb(file_size_bytes):
     """Convert bytes to MB with 1 decimal place."""
@@ -263,3 +286,16 @@ def format_file_size(file_size_bytes):
         return f"{file_size_bytes / (1024 * 1024):.1f} MB"
     else:
         return f"{file_size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+# Cleanup function
+async def cleanup_mtproto_client():
+    """Cleanup MTProto client on shutdown."""
+    global mtproto_client
+    if mtproto_client:
+        try:
+            await mtproto_client.stop()
+            logger.info("MTProto client stopped")
+        except Exception as e:
+            logger.error(f"Error stopping MTProto client: {e}")
+        finally:
+            mtproto_client = None
