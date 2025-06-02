@@ -33,4 +33,42 @@ DEFAULT_THUMBNAIL = 'https://telegra.ph/file/37985c408b1b7c817cbd6-4b850ca6f02b6
 
 # FFmpeg settings
 FFMPEG_PATH = 'ffmpeg'
+
+# File size limits (in bytes)
 MAX_FILE_SIZE = 2000 * 1024 * 1024  # 2GB in bytes
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024   # 50MB for uploads via bot (Telegram Bot API limit)
+
+# Alternative file size limits for different file types
+FILE_SIZE_LIMITS = {
+    'video': 2000 * 1024 * 1024,     # 2GB for videos
+    'document': 2000 * 1024 * 1024,  # 2GB for documents
+    'photo': 10 * 1024 * 1024,       # 10MB for photos
+}
+
+# Encoding presets for different quality levels
+ENCODING_PRESETS = {
+    'ultra_fast': {
+        'preset': 'ultrafast',
+        'crf': '35'
+    },
+    'fast': {
+        'preset': 'fast',
+        'crf': '28'
+    },
+    'medium': {
+        'preset': 'medium',
+        'crf': '23'
+    },
+    'slow': {
+        'preset': 'slow',
+        'crf': '20'
+    }
+}
+
+# Progress update intervals
+PROGRESS_UPDATE_INTERVAL = 5  # seconds
+
+# Timeout settings
+DOWNLOAD_TIMEOUT = 300  # 5 minutes
+ENCODING_TIMEOUT = 1800  # 30 minutes
+UPLOAD_TIMEOUT = 600    # 10 minutes
