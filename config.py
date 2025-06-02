@@ -35,14 +35,16 @@ DEFAULT_THUMBNAIL = 'https://telegra.ph/file/37985c408b1b7c817cbd6-4b850ca6f02b6
 FFMPEG_PATH = 'ffmpeg'
 
 # File size limits (in bytes)
-MAX_FILE_SIZE = 2000 * 1024 * 1024  # 2GB in bytes
+# Note: Telegram Bot API has a 20MB limit for file downloads
+TELEGRAM_BOT_API_LIMIT = 20 * 1024 * 1024  # 20MB - Telegram Bot API limit
+MAX_FILE_SIZE = TELEGRAM_BOT_API_LIMIT  # Use Bot API limit as our max
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024   # 50MB for uploads via bot (Telegram Bot API limit)
 
 # Alternative file size limits for different file types
 FILE_SIZE_LIMITS = {
-    'video': 2000 * 1024 * 1024,     # 2GB for videos
-    'document': 2000 * 1024 * 1024,  # 2GB for documents
-    'photo': 10 * 1024 * 1024,       # 10MB for photos
+    'video': TELEGRAM_BOT_API_LIMIT,     # 20MB for videos (Bot API limit)
+    'document': TELEGRAM_BOT_API_LIMIT,  # 20MB for documents (Bot API limit)
+    'photo': 10 * 1024 * 1024,          # 10MB for photos
 }
 
 # Encoding presets for different quality levels
@@ -66,7 +68,7 @@ ENCODING_PRESETS = {
 }
 
 # Progress update intervals
-PROGRESS_UPDATE_INTERVAL = 15  # seconds
+PROGRESS_UPDATE_INTERVAL = 5  # seconds
 
 # Timeout settings
 DOWNLOAD_TIMEOUT = 300  # 5 minutes
