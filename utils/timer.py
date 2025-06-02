@@ -1,44 +1,29 @@
-# utils/timer.py
 import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
 
 class Timer:
-    """Timer utility for timeouts and delays."""
+    """Timer utility for timeouts."""
     
-    def __init__(self, timeout=60):
+    def __init__(self, timeout, callback):
         self.timeout = timeout
+        self.callback = callback
         self._task = None
-    
-    async def start(self, callback, *args, **kwargs):
-        """Start timer with callback."""
+
+    async def start(self):
+        """Start the timer."""
+        self._task = asyncio.create_task(self._run())
+
+    async def _run(self):
+        """Run the timer."""
         try:
             await asyncio.sleep(self.timeout)
-            await callback(*args, **kwargs)
+            await self.callback()
         except asyncio.CancelledError:
-            logger.info("Timer cancelled")
-        except Exception as e:
-            logger.error(f"Timer error: {e}")
-    
+            pass
+
     def cancel(self):
-        """Cancel timer."""
-        if self._task and not self._task.done():
+        """Cancel the timer."""
+        if self._task:
             self._task.cancel()
-
-async def timeout_handler(message, timeout_seconds=60):
-    """Handle timeout for user input."""
-    try:
-        await asyncio.sleep(timeout_seconds)
-        await message.edit_text("⏰ Timeout! Please try again.")
-    except Exception as e:
-        logger.error(f"Timeout handler error: {e}")
-
-def debounce(wait_time):
-    """Debounce decorator for functions."""
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
-            await asyncio.sleep(wait_time)
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator
