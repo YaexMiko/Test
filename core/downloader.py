@@ -6,6 +6,9 @@ from config import TEMP_DIR, MAX_FILE_SIZE
 
 logger = logging.getLogger(__name__)
 
+# Telegram Bot API file size limits
+TELEGRAM_BOT_API_LIMIT = 20 * 1024 * 1024  # 20MB limit for Bot API
+
 async def download_media(message, status_message=None):
     """Download media from Telegram message with file size checks."""
     try:
@@ -25,7 +28,28 @@ async def download_media(message, status_message=None):
             logger.error("No video or document found in message")
             return None
         
-        # Check file size before downloading
+        # Check file size against Telegram Bot API limit first
+        if file_size and file_size > TELEGRAM_BOT_API_LIMIT:
+            size_mb = file_size / (1024 * 1024)
+            limit_mb = TELEGRAM_BOT_API_LIMIT / (1024 * 1024)
+            logger.error(f"File too large for Bot API: {size_mb:.1f}MB (Limit: {limit_mb:.1f}MB)")
+            
+            if status_message:
+                await status_message.edit_text(
+                    f"❌ **File Too Large for Bot API!**\n\n"
+                    f"📁 Your file: {size_mb:.1f}MB\n"
+                    f"📏 Bot API limit: {limit_mb:.1f}MB\n\n"
+                    f"**Solutions:**\n"
+                    f"• Upload files under {limit_mb:.0f}MB\n"
+                    f"• Compress your video first\n"
+                    f"• Use lower resolution/quality\n"
+                    f"• Split large files into parts\n\n"
+                    f"**Note:** This is a Telegram Bot API limitation.",
+                    parse_mode='Markdown'
+                )
+            return None
+        
+        # Check against our configured limit
         if file_size and file_size > MAX_FILE_SIZE:
             size_mb = file_size / (1024 * 1024)
             max_size_mb = MAX_FILE_SIZE / (1024 * 1024)
@@ -60,9 +84,27 @@ async def download_media(message, status_message=None):
         return file_path
         
     except Exception as e:
-        logger.error(f"Error downloading media: {e}")
-        if status_message:
-            await status_message.edit_text(f"❌ Download failed: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Error downloading media: {error_msg}")
+        
+        # Handle specific Telegram errors
+        if "File is too big" in error_msg or "file is too large" in error_msg.lower():
+            if status_message:
+                await status_message.edit_text(
+                    f"❌ **File Too Large!**\n\n"
+                    f"This file exceeds Telegram's download limits.\n\n"
+                    f"**Solutions:**\n"
+                    f"• Upload files under 20MB\n"
+                    f"• Compress your video first\n"
+                    f"• Use a video compressor app\n"
+                    f"• Split large files into smaller parts\n\n"
+                    f"**Technical limit:** Telegram Bot API = 20MB",
+                    parse_mode='Markdown'
+                )
+        else:
+            if status_message:
+                await status_message.edit_text(f"❌ Download failed: {error_msg}")
+        
         return None
 
 async def download_with_progress(file, file_path, status_message=None, total_size=None):
@@ -127,9 +169,13 @@ def get_file_size_gb(file_size_bytes):
 def check_file_size_limit(file_size_bytes, max_size_bytes=None):
     """Check if file size is within limits."""
     if max_size_bytes is None:
-        max_size_bytes = MAX_FILE_SIZE
+        max_size_bytes = min(MAX_FILE_SIZE, TELEGRAM_BOT_API_LIMIT)
     
     return file_size_bytes <= max_size_bytes
+
+def get_max_allowed_size():
+    """Get the actual maximum allowed file size considering all limits."""
+    return min(MAX_FILE_SIZE, TELEGRAM_BOT_API_LIMIT)
 
 def format_file_size(file_size_bytes):
     """Format file size in human readable format."""
