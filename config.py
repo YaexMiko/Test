@@ -1,4 +1,3 @@
-# config.py - Configuration file
 import os
 import logging
 from dotenv import load_dotenv
@@ -16,6 +15,9 @@ logging.getLogger('aiohttp').setLevel(logging.WARNING)
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8191627683:AAEaD3MzrdkcwhAj6eiATKLAwPzQQhbxVCI')
 API_ID = os.getenv('API_ID', '28614709')
 API_HASH = os.getenv('API_HASH', 'f36fd2ee6e3d3a17c4d244ff6dc1bac8')
+
+# Owner Configuration - IMPORTANT: Change this to your actual Telegram user ID
+OWNER_ID = os.getenv('OWNER_ID', '7970350353')  # Replace with your actual user ID
 
 # Database Configuration
 DATABASE_PATH = 'bot_database.db'
@@ -155,3 +157,11 @@ elif VERBOSE_LOGGING:
     # Enable more detailed logging for core components
     logging.getLogger('core').setLevel(logging.DEBUG)
     logging.getLogger('commands').setLevel(logging.DEBUG)
+
+# Admin settings
+ADMIN_FEATURES = {
+    'stats_enabled': True,
+    'user_management': True,
+    'broadcast_enabled': True,
+    'system_monitoring': True
+}
