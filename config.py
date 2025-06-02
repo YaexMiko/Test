@@ -35,15 +35,21 @@ DEFAULT_THUMBNAIL = 'https://telegra.ph/file/37985c408b1b7c817cbd6-4b850ca6f02b6
 FFMPEG_PATH = 'ffmpeg'
 
 # File size limits (in bytes)
-# Note: Telegram Bot API has a 20MB limit for file downloads
-TELEGRAM_BOT_API_LIMIT = 20 * 1024 * 1024  # 20MB - Telegram Bot API limit
-MAX_FILE_SIZE = TELEGRAM_BOT_API_LIMIT  # Use Bot API limit as our max
-MAX_UPLOAD_SIZE = 50 * 1024 * 1024   # 50MB for uploads via bot (Telegram Bot API limit)
+TELEGRAM_BOT_API_LIMIT = 20 * 1024 * 1024  # 20MB - Bot API limit
+TELEGRAM_CLIENT_LIMIT = 2000 * 1024 * 1024  # 2GB - MTProto client limit
+MAX_FILE_SIZE = TELEGRAM_CLIENT_LIMIT  # 2GB using MTProto client
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024   # 50MB for uploads via bot
+
+# File size limits for different download methods
+DOWNLOAD_LIMITS = {
+    'bot_api': TELEGRAM_BOT_API_LIMIT,    # 20MB
+    'mtproto': TELEGRAM_CLIENT_LIMIT,     # 2GB
+}
 
 # Alternative file size limits for different file types
 FILE_SIZE_LIMITS = {
-    'video': TELEGRAM_BOT_API_LIMIT,     # 20MB for videos (Bot API limit)
-    'document': TELEGRAM_BOT_API_LIMIT,  # 20MB for documents (Bot API limit)
+    'video': TELEGRAM_CLIENT_LIMIT,      # 2GB for videos
+    'document': TELEGRAM_CLIENT_LIMIT,   # 2GB for documents
     'photo': 10 * 1024 * 1024,          # 10MB for photos
 }
 
@@ -74,3 +80,7 @@ PROGRESS_UPDATE_INTERVAL = 5  # seconds
 DOWNLOAD_TIMEOUT = 300  # 5 minutes
 ENCODING_TIMEOUT = 1800  # 30 minutes
 UPLOAD_TIMEOUT = 600    # 10 minutes
+
+# MTProto client settings
+USE_MTPROTO_FOR_LARGE_FILES = True
+MTPROTO_SESSION_STRING = 'bot_session'
