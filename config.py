@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot Configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-API_ID = os.getenv('API_ID', 'YOUR_API_ID')
-API_HASH = os.getenv('API_HASH', 'YOUR_API_HASH')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8191627683:AAEaD3MzrdkcwhAj6eiATKLAwPzQQhbxVCI')
+API_ID = os.getenv('API_ID', '28614709')
+API_HASH = os.getenv('API_HASH', 'f36fd2ee6e3d3a17c4d244ff6dc1bac8')
 
 # Database Configuration
 DATABASE_PATH = 'bot_database.db'
@@ -29,7 +29,7 @@ DEFAULT_SETTINGS = {
 # File paths
 TEMP_DIR = 'temp'
 THUMBNAILS_DIR = 'thumbnails'
-DEFAULT_THUMBNAIL = 'assets/default_thumbnail.jpg'
+DEFAULT_THUMBNAIL = 'https://telegra.ph/file/37985c408b1b7c817cbd6-4b850ca6f02b6eae30.jpg'
 
 # FFmpeg settings
 FFMPEG_PATH = 'ffmpeg'
