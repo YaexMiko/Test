@@ -1,4 +1,3 @@
-# commands/settings.py
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -58,12 +57,20 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Send photo with settings
     if thumbnail_path:
-        await update.message.reply_photo(
-            photo=open(thumbnail_path, 'rb'),
-            caption=settings_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        try:
+            with open(thumbnail_path, 'rb') as photo:
+                await update.message.reply_photo(
+                    photo=photo,
+                    caption=settings_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+        except:
+            await update.message.reply_text(
+                settings_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
     else:
         await update.message.reply_text(
             settings_text,
