@@ -1,3 +1,4 @@
+# config.py - Configuration file
 import os
 import logging
 from dotenv import load_dotenv
@@ -19,8 +20,22 @@ API_HASH = os.getenv('API_HASH', 'f36fd2ee6e3d3a17c4d244ff6dc1bac8')
 # Owner Configuration - IMPORTANT: Change this to your actual Telegram user ID
 OWNER_ID = os.getenv('OWNER_ID', '7970350353')  # Replace with your actual user ID
 
-# Database Configuration
+# Database Configuration - SQLite fallback
 DATABASE_PATH = 'bot_database.db'
+
+# MongoDB Configuration - Your format
+DB_URI = os.environ.get("DATABASE_URL", "mongodb+srv://Promo:aloksingh@promo.lspnr.mongodb.net/?retryWrites=true&w=majority")
+DB_NAME = os.environ.get("DATABASE_NAME", "Promo")
+
+# MongoDB Collections
+MONGODB_USERS_COLLECTION = 'users'
+MONGODB_SETTINGS_COLLECTION = 'user_settings'
+MONGODB_STATS_COLLECTION = 'bot_stats'
+MONGODB_LOGS_COLLECTION = 'processing_logs'
+MONGODB_ADMIN_LOGS_COLLECTION = 'admin_actions'
+
+# Database choice - MongoDB or SQLite
+USE_MONGODB = os.getenv('USE_MONGODB', 'true').lower() == 'true'
 
 # Encoding Configuration
 DEFAULT_SETTINGS = {
@@ -165,3 +180,9 @@ ADMIN_FEATURES = {
     'broadcast_enabled': True,
     'system_monitoring': True
 }
+
+# MongoDB Connection Settings
+MONGODB_CONNECTION_TIMEOUT = 5000  # 5 seconds
+MONGODB_SERVER_SELECTION_TIMEOUT = 5000  # 5 seconds
+MONGODB_MAX_POOL_SIZE = 50
+MONGODB_MIN_POOL_SIZE = 5
