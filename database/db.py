@@ -62,35 +62,67 @@ class MongoDBManager:
             
             # Users collection indexes
             users_collection = self.db[MONGODB_USERS_COLLECTION]
-            try:
-                await users_collection.create_index("user_id", unique=True)
-            except DuplicateKeyError:
-                logger.warning("Users user_id index already exists, skipping...")
             
-            await users_collection.create_index("username")
-            await users_collection.create_index("join_date")
+            # Drop existing indexes if they exist and recreate
+            try:
+                existing_indexes = await users_collection.list_indexes().to_list(length=None)
+                index_names = [idx['name'] for idx in existing_indexes if idx['name'] != '_id_']
+                
+                for index_name in index_names:
+                    try:
+                        await users_collection.drop_index(index_name)
+                    except:
+                        pass
+                
+                # Create new indexes
+                await users_collection.create_index("user_id", unique=True)
+                await users_collection.create_index("username")
+                await users_collection.create_index("join_date")
+                
+            except Exception as e:
+                logger.warning(f"Error with users indexes: {e}")
             
             # Settings collection indexes
             settings_collection = self.db[MONGODB_SETTINGS_COLLECTION]
             try:
+                # Drop and recreate settings indexes
+                existing_indexes = await settings_collection.list_indexes().to_list(length=None)
+                index_names = [idx['name'] for idx in existing_indexes if idx['name'] != '_id_']
+                
+                for index_name in index_names:
+                    try:
+                        await settings_collection.drop_index(index_name)
+                    except:
+                        pass
+                
                 await settings_collection.create_index("user_id", unique=True)
-            except DuplicateKeyError:
-                logger.warning("Settings user_id index already exists, skipping...")
+                
+            except Exception as e:
+                logger.warning(f"Error with settings indexes: {e}")
             
             # Logs collection indexes
             logs_collection = self.db[MONGODB_LOGS_COLLECTION]
-            await logs_collection.create_index("user_id")
-            await logs_collection.create_index("timestamp")
-            await logs_collection.create_index("status")
+            try:
+                await logs_collection.create_index("user_id")
+                await logs_collection.create_index("timestamp")
+                await logs_collection.create_index("status")
+            except Exception as e:
+                logger.warning(f"Error with logs indexes: {e}")
             
             # Admin logs indexes
             admin_logs_collection = self.db[MONGODB_ADMIN_LOGS_COLLECTION]
-            await admin_logs_collection.create_index("admin_id")
-            await admin_logs_collection.create_index("timestamp")
+            try:
+                await admin_logs_collection.create_index("admin_id")
+                await admin_logs_collection.create_index("timestamp")
+            except Exception as e:
+                logger.warning(f"Error with admin logs indexes: {e}")
             
             # Stats collection indexes
             stats_collection = self.db[MONGODB_STATS_COLLECTION]
-            await stats_collection.create_index("date")
+            try:
+                await stats_collection.create_index("date")
+            except Exception as e:
+                logger.warning(f"Error with stats indexes: {e}")
             
             logger.info("📊 MongoDB indexes created successfully")
             
@@ -111,6 +143,16 @@ class MongoDBManager:
             result = await users_collection.delete_many({"user_id": {"$exists": False}})
             if result.deleted_count > 0:
                 logger.info(f"🧹 Cleaned {result.deleted_count} records missing user_id")
+            
+            # Remove documents with empty string user_id
+            result = await users_collection.delete_many({"user_id": ""})
+            if result.deleted_count > 0:
+                logger.info(f"🧹 Cleaned {result.deleted_count} empty user_id records")
+            
+            # Remove documents with zero user_id
+            result = await users_collection.delete_many({"user_id": 0})
+            if result.deleted_count > 0:
+                logger.info(f"🧹 Cleaned {result.deleted_count} zero user_id records")
             
         except Exception as e:
             logger.error(f"Error cleaning users collection: {e}")
@@ -180,7 +222,7 @@ class MongoDBManager:
             
             # Only get users with valid user_id
             cursor = self.db[MONGODB_USERS_COLLECTION].find(
-                {"user_id": {"$exists": True, "$ne": None}}
+                {"user_id": {"$exists": True, "$ne": None, "$gt": 0}}
             ).sort("join_date", -1)
             users = await cursor.to_list(length=None)
             return users
@@ -197,7 +239,7 @@ class MongoDBManager:
             
             # Only count users with valid user_id
             count = await self.db[MONGODB_USERS_COLLECTION].count_documents(
-                {"user_id": {"$exists": True, "$ne": None}}
+                {"user_id": {"$exists": True, "$ne": None, "$gt": 0}}
             )
             return count
             
@@ -409,13 +451,13 @@ class MongoDBManager:
             today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             active_today = await self.db[MONGODB_USERS_COLLECTION].count_documents({
                 "last_active": {"$gte": today_start},
-                "user_id": {"$exists": True, "$ne": None}
+                "user_id": {"$exists": True, "$ne": None, "$gt": 0}
             })
             
             # New users today
             new_today = await self.db[MONGODB_USERS_COLLECTION].count_documents({
                 "join_date": {"$gte": today_start},
-                "user_id": {"$exists": True, "$ne": None}
+                "user_id": {"$exists": True, "$ne": None, "$gt": 0}
             })
             
             return {
