@@ -66,7 +66,7 @@ ENCODING_PRESETS = {
 }
 
 # Progress update intervals
-PROGRESS_UPDATE_INTERVAL = 5  # seconds
+PROGRESS_UPDATE_INTERVAL = 15  # seconds
 
 # Timeout settings
 DOWNLOAD_TIMEOUT = 300  # 5 minutes
