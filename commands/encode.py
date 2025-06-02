@@ -1,4 +1,3 @@
-# commands/encode.py
 import logging
 import os
 from telegram import Update
