@@ -18,22 +18,22 @@ async def add_user_to_db(user_id, username, first_name):
             cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
             if cursor.fetchone():
                 conn.close()
-                return True
+                return True  # User already exists
             
-            # Add new user
-            cursor.execute(
-                "INSERT INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
-                (user_id, username, first_name)
-            )
+            # Insert new user
+            cursor.execute('''
+                INSERT INTO users (user_id, username, first_name)
+                VALUES (?, ?, ?)
+            ''', (user_id, username, first_name))
             
             conn.commit()
             conn.close()
             
-            logger.info(f"Added user {user_id} to SQLite database")
+            logger.info(f"✅ User {user_id} added to SQLite")
             return True
             
         except Exception as e:
-            logger.error(f"Error adding user to SQLite database: {e}")
+            logger.error(f"Error adding user to SQLite: {e}")
             return False
 
 async def get_user_from_db(user_id):
@@ -48,15 +48,24 @@ async def get_user_from_db(user_id):
             
             cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
             user = cursor.fetchone()
-            
             conn.close()
-            return user
+            
+            if user:
+                return {
+                    'user_id': user[0],
+                    'username': user[1],
+                    'first_name': user[2],
+                    'join_date': user[3],
+                    'last_active': user[4],
+                    'is_banned': user[5]
+                }
+            return None
             
         except Exception as e:
-            logger.error(f"Error getting user from SQLite database: {e}")
+            logger.error(f"Error getting user from SQLite: {e}")
             return None
 
-async def get_all_users():
+async def get_all_users_from_db():
     """Get all users from database - MongoDB or SQLite."""
     if USE_MONGODB and mongodb_manager.connected:
         users = await mongodb_manager.get_all_users()
@@ -67,7 +76,9 @@ async def get_all_users():
                 user.get('user_id'),
                 user.get('username'),
                 user.get('first_name'),
-                user.get('join_date').strftime('%Y-%m-%d %H:%M:%S') if user.get('join_date') else None
+                user.get('join_date'),
+                user.get('last_active'),
+                user.get('is_banned', False)
             )
             user_list.append(user_tuple)
         return user_list
@@ -77,18 +88,18 @@ async def get_all_users():
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute("SELECT user_id, username, first_name, join_date FROM users ORDER BY join_date DESC")
+            cursor.execute("SELECT * FROM users ORDER BY join_date DESC")
             users = cursor.fetchall()
-            
             conn.close()
+            
             return users
             
         except Exception as e:
-            logger.error(f"Error getting all users from SQLite database: {e}")
+            logger.error(f"Error getting all users from SQLite: {e}")
             return []
 
-async def get_user_count():
-    """Get total user count - MongoDB or SQLite."""
+async def get_user_count_from_db():
+    """Get total user count from database."""
     if USE_MONGODB and mongodb_manager.connected:
         return await mongodb_manager.get_user_count()
     else:
@@ -99,59 +110,16 @@ async def get_user_count():
             
             cursor.execute("SELECT COUNT(*) FROM users")
             count = cursor.fetchone()[0]
-            
             conn.close()
+            
             return count
             
         except Exception as e:
             logger.error(f"Error getting user count from SQLite: {e}")
             return 0
 
-async def get_recent_users(limit=10):
-    """Get recent users - MongoDB or SQLite."""
-    if USE_MONGODB and mongodb_manager.connected:
-        try:
-            cursor = mongodb_manager.db[mongodb_manager.db.collection_names()[0]].find(
-                {"user_id": {"$exists": True, "$ne": None, "$gt": 0}}
-            ).sort("join_date", -1).limit(limit)
-            users = await cursor.to_list(length=limit)
-            
-            # Convert to tuple format
-            user_list = []
-            for user in users:
-                user_tuple = (
-                    user.get('user_id'),
-                    user.get('username'),
-                    user.get('first_name'),
-                    user.get('join_date').strftime('%Y-%m-%d %H:%M:%S') if user.get('join_date') else None
-                )
-                user_list.append(user_tuple)
-            return user_list
-            
-        except Exception as e:
-            logger.error(f"Error getting recent users from MongoDB: {e}")
-            return []
-    else:
-        # SQLite fallback
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                "SELECT user_id, username, first_name, join_date FROM users ORDER BY join_date DESC LIMIT ?",
-                (limit,)
-            )
-            users = cursor.fetchall()
-            
-            conn.close()
-            return users
-            
-        except Exception as e:
-            logger.error(f"Error getting recent users from SQLite: {e}")
-            return []
-
-async def update_user_activity(user_id):
-    """Update user last activity - MongoDB or SQLite."""
+async def update_user_activity_in_db(user_id):
+    """Update user last activity in database."""
     if USE_MONGODB and mongodb_manager.connected:
         return await mongodb_manager.update_user_activity(user_id)
     else:
@@ -160,10 +128,11 @@ async def update_user_activity(user_id):
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute(
-                "UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE user_id = ?",
-                (user_id,)
-            )
+            cursor.execute('''
+                UPDATE users 
+                SET last_active = CURRENT_TIMESTAMP 
+                WHERE user_id = ?
+            ''', (user_id,))
             
             conn.commit()
             conn.close()
@@ -173,127 +142,104 @@ async def update_user_activity(user_id):
             logger.error(f"Error updating user activity in SQLite: {e}")
             return False
 
-async def ban_user(user_id):
-    """Ban a user - MongoDB or SQLite."""
+# User Settings Functions
+async def create_user_settings_in_db(user_id):
+    """Create default settings for user in database."""
     if USE_MONGODB and mongodb_manager.connected:
-        try:
-            await mongodb_manager.db[mongodb_manager.MONGODB_USERS_COLLECTION].update_one(
-                {"user_id": int(user_id)},
-                {"$set": {"is_banned": True}}
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Error banning user in MongoDB: {e}")
-            return False
+        return await mongodb_manager.create_user_settings(user_id)
     else:
         # SQLite fallback
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute(
-                "UPDATE users SET is_banned = TRUE WHERE user_id = ?",
-                (user_id,)
-            )
+            # Check if settings already exist
+            cursor.execute("SELECT user_id FROM user_settings WHERE user_id = ?", (user_id,))
+            if cursor.fetchone():
+                conn.close()
+                return True  # Settings already exist
+            
+            # Insert default settings
+            cursor.execute('''
+                INSERT INTO user_settings (user_id)
+                VALUES (?)
+            ''', (user_id,))
             
             conn.commit()
             conn.close()
+            
+            logger.info(f"✅ Settings created for user {user_id} in SQLite")
             return True
             
         except Exception as e:
-            logger.error(f"Error banning user in SQLite: {e}")
+            logger.error(f"Error creating user settings in SQLite: {e}")
             return False
 
-async def unban_user(user_id):
-    """Unban a user - MongoDB or SQLite."""
+async def get_user_settings_from_db(user_id):
+    """Get user settings from database."""
     if USE_MONGODB and mongodb_manager.connected:
+        return await mongodb_manager.get_user_settings(user_id)
+    else:
+        # SQLite fallback
         try:
-            await mongodb_manager.db[mongodb_manager.MONGODB_USERS_COLLECTION].update_one(
-                {"user_id": int(user_id)},
-                {"$set": {"is_banned": False}}
-            )
-            return True
+            from config import DEFAULT_SETTINGS
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+            settings = cursor.fetchone()
+            conn.close()
+            
+            if settings:
+                return {
+                    'upload_mode': settings[1] or DEFAULT_SETTINGS['upload_mode'],
+                    'resolution': settings[2] or DEFAULT_SETTINGS['resolution'],
+                    'vcodec': settings[3] or DEFAULT_SETTINGS['vcodec'],
+                    'bits': settings[4] or DEFAULT_SETTINGS['bits'],
+                    'crf': settings[5] or DEFAULT_SETTINGS['crf'],
+                    'aspect_ratio': settings[6] or DEFAULT_SETTINGS['aspect_ratio'],
+                    'custom_thumbnail': settings[7],
+                    'watermark': settings[8],
+                    'auto_rename': settings[9],
+                    'metadata_enabled': bool(settings[10]) if settings[10] is not None else DEFAULT_SETTINGS['metadata_enabled']
+                }
+            else:
+                # Create default settings
+                await create_user_settings_in_db(user_id)
+                return DEFAULT_SETTINGS
+                
         except Exception as e:
-            logger.error(f"Error unbanning user in MongoDB: {e}")
-            return False
+            logger.error(f"Error getting user settings from SQLite: {e}")
+            from config import DEFAULT_SETTINGS
+            return DEFAULT_SETTINGS
+
+async def update_user_setting_in_db(user_id, setting_name, value):
+    """Update specific user setting in database."""
+    if USE_MONGODB and mongodb_manager.connected:
+        return await mongodb_manager.update_user_setting(user_id, setting_name, value)
     else:
         # SQLite fallback
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            cursor.execute(
-                "UPDATE users SET is_banned = FALSE WHERE user_id = ?",
-                (user_id,)
-            )
+            # First ensure settings exist
+            cursor.execute("SELECT user_id FROM user_settings WHERE user_id = ?", (user_id,))
+            if not cursor.fetchone():
+                # Create settings first
+                cursor.execute("INSERT INTO user_settings (user_id) VALUES (?)", (user_id,))
+            
+            # Update the specific setting
+            query = f"UPDATE user_settings SET {setting_name} = ? WHERE user_id = ?"
+            cursor.execute(query, (value, user_id))
             
             conn.commit()
             conn.close()
+            
+            logger.info(f"✅ Updated {setting_name} for user {user_id} in SQLite")
             return True
             
         except Exception as e:
-            logger.error(f"Error unbanning user in SQLite: {e}")
+            logger.error(f"Error updating user setting in SQLite: {e}")
             return False
-
-async def is_user_banned(user_id):
-    """Check if user is banned - MongoDB or SQLite."""
-    if USE_MONGODB and mongodb_manager.connected:
-        try:
-            user = await mongodb_manager.get_user(user_id)
-            return user.get('is_banned', False) if user else False
-        except Exception as e:
-            logger.error(f"Error checking ban status in MongoDB: {e}")
-            return False
-    else:
-        # SQLite fallback
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
-            result = cursor.fetchone()
-            
-            conn.close()
-            return bool(result[0]) if result else False
-            
-        except Exception as e:
-            logger.error(f"Error checking ban status in SQLite: {e}")
-            return False
-
-# Helper functions for statistics
-async def get_user_stats():
-    """Get user statistics - MongoDB or SQLite."""
-    if USE_MONGODB and mongodb_manager.connected:
-        return await mongodb_manager.get_user_stats()
-    else:
-        # SQLite fallback
-        try:
-            from datetime import datetime, timedelta
-            
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Total users
-            cursor.execute("SELECT COUNT(*) FROM users")
-            total_users = cursor.fetchone()[0]
-            
-            # Active today (users with last_active today)
-            today = datetime.now().strftime('%Y-%m-%d')
-            cursor.execute("SELECT COUNT(*) FROM users WHERE date(last_active) = ?", (today,))
-            active_today = cursor.fetchone()[0]
-            
-            # New users today
-            cursor.execute("SELECT COUNT(*) FROM users WHERE date(join_date) = ?", (today,))
-            new_today = cursor.fetchone()[0]
-            
-            conn.close()
-            
-            return {
-                "total_users": total_users,
-                "active_today": active_today,
-                "new_today": new_today
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting user stats from SQLite: {e}")
-            return {"total_users": 0, "active_today": 0, "new_today": 0}
