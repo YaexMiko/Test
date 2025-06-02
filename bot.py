@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import os
+import signal
 
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -19,7 +20,7 @@ from utils.logger import setup_logger
 setup_logger()
 logger = logging.getLogger(__name__)
 
-async def main():
+def main():
     """Start the bot."""
     # Initialize database
     init_database()
@@ -35,12 +36,22 @@ async def main():
     # Callback query handler for settings
     application.add_handler(CallbackQueryHandler(handle_settings_callback))
     
-    # Message handlers for media - Fix the DOCUMENT filter
+    # Message handlers for media
     application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
     
     # Start the bot
     logger.info("Starting bot...")
-    await application.run_polling()
+    
+    # Use run_polling without asyncio.run()
+    application.run_polling(
+        poll_interval=0.0,
+        timeout=10,
+        bootstrap_retries=5,
+        read_timeout=5,
+        write_timeout=5,
+        connect_timeout=5,
+        pool_timeout=5,
+    )
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
