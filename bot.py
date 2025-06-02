@@ -2,6 +2,7 @@ import asyncio
 import logging
 import sys
 import os
+import signal
 
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -27,79 +28,168 @@ setup_logger()
 
 logger = logging.getLogger(__name__)
 
-async def main():
-    """Main function to run the bot."""
-    application = None
-    try:
-        # Initialize database
-        db_success = await init_database()
-        
-        if USE_MONGODB:
-            if db_success:
-                logger.info("🗄️ Database: MongoDB")
-            else:
-                logger.info("🗄️ Database: SQLite (fallback)")
-        else:
-            logger.info("🗄️ Database: SQLite")
-        
-        # Create application
-        application = Application.builder().token(BOT_TOKEN).build()
-        
-        # Add command handlers
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("settings", settings_command))
-        
-        # Admin commands
-        application.add_handler(CommandHandler("admin", admin_command))
-        application.add_handler(CommandHandler("stats", stats_command))
-        application.add_handler(CommandHandler("users", users_command))
-        application.add_handler(CommandHandler("broadcast", broadcast_command))
-        
-        # Callback query handlers
-        application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(?!admin_).*"))
-        application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin_.*"))
-        
-        # Message handlers for media
-        application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
-        
-        # Start the bot
-        logger.info("🚀 Video Encode Bot starting...")
-        logger.info("📡 Bot is ready to receive files!")
-        
-        # Run the bot with polling
-        await application.run_polling(
-            poll_interval=0.0,
-            timeout=10,
-            bootstrap_retries=5,
-            read_timeout=5,
-            write_timeout=5,
-            connect_timeout=5,
-            pool_timeout=5,
-            drop_pending_updates=True
-        )
-        
-    except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
-    except Exception as e:
-        logger.error(f"❌ Bot crashed during startup: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Cleanup
+class TelegramBot:
+    def __init__(self):
+        self.application = None
+        self.is_running = False
+    
+    async def initialize(self):
+        """Initialize the bot and database."""
         try:
+            # Initialize database
+            db_success = await init_database()
+            
+            if USE_MONGODB:
+                if db_success:
+                    logger.info("🗄️ Database: MongoDB")
+                else:
+                    logger.info("🗄️ Database: SQLite (fallback)")
+            else:
+                logger.info("🗄️ Database: SQLite")
+            
+            # Create application
+            self.application = Application.builder().token(BOT_TOKEN).build()
+            
+            # Add command handlers
+            self.application.add_handler(CommandHandler("start", start_command))
+            self.application.add_handler(CommandHandler("help", help_command))
+            self.application.add_handler(CommandHandler("settings", settings_command))
+            
+            # Admin commands
+            self.application.add_handler(CommandHandler("admin", admin_command))
+            self.application.add_handler(CommandHandler("stats", stats_command))
+            self.application.add_handler(CommandHandler("users", users_command))
+            self.application.add_handler(CommandHandler("broadcast", broadcast_command))
+            
+            # Callback query handlers
+            self.application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(?!admin_).*"))
+            self.application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin_.*"))
+            
+            # Message handlers for media
+            self.application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
+            
+            logger.info("🚀 Video Encode Bot starting...")
+            logger.info("📡 Bot is ready to receive files!")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Bot initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def start_polling(self):
+        """Start the bot with polling."""
+        try:
+            if not self.application:
+                logger.error("Bot not initialized!")
+                return False
+            
+            # Initialize the application
+            await self.application.initialize()
+            await self.application.start()
+            
+            # Start polling manually
+            await self.application.updater.start_polling(
+                poll_interval=1.0,
+                timeout=10,
+                bootstrap_retries=5,
+                read_timeout=10,
+                write_timeout=10,
+                connect_timeout=10,
+                pool_timeout=10,
+                drop_pending_updates=True
+            )
+            
+            self.is_running = True
+            logger.info("✅ Bot started successfully!")
+            
+            # Keep running until stopped
+            try:
+                while self.is_running:
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("🛑 Bot polling cancelled")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during polling: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def stop(self):
+        """Stop the bot gracefully."""
+        try:
+            self.is_running = False
+            
+            if self.application:
+                if self.application.updater.running:
+                    await self.application.updater.stop()
+                
+                await self.application.stop()
+                await self.application.shutdown()
+            
             # Close MongoDB connection if connected
             if mongodb_manager.connected:
                 await mongodb_manager.disconnect()
             
-            logger.info("🛑 Bot shutdown completed")
+            logger.info("🛑 Bot stopped successfully")
+            
         except Exception as e:
-            logger.error(f"Error during shutdown: {e}")
+            logger.error(f"Error stopping bot: {e}")
+
+# Global bot instance
+bot_instance = None
+
+async def main():
+    """Main function to run the bot."""
+    global bot_instance
+    
+    try:
+        bot_instance = TelegramBot()
+        
+        # Initialize bot
+        if not await bot_instance.initialize():
+            logger.error("❌ Failed to initialize bot")
+            return
+        
+        # Start polling
+        await bot_instance.start_polling()
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user (Ctrl+C)")
+    except Exception as e:
+        logger.error(f"❌ Bot crashed: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if bot_instance:
+            await bot_instance.stop()
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    logger.info(f"🛑 Received signal {signum}, shutting down...")
+    if bot_instance:
+        asyncio.create_task(bot_instance.stop())
 
 def run_bot():
     """Run the bot with proper event loop handling."""
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     try:
-        asyncio.run(main())
+        # Check if there's already an event loop running
+        try:
+            loop = asyncio.get_running_loop()
+            logger.warning("⚠️ Event loop already running, creating new task")
+            # If we're in Jupyter or already have a loop, create a task
+            task = loop.create_task(main())
+            return task
+        except RuntimeError:
+            # No loop running, safe to use asyncio.run()
+            asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("🛑 Bot stopped by user")
     except Exception as e:
