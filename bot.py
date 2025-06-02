@@ -13,7 +13,7 @@ logging.getLogger('telegram').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from config import BOT_TOKEN
+from config import BOT_TOKEN, USE_MONGODB
 from commands.start import start_command
 from commands.help import help_command
 from commands.settings import settings_command, handle_settings_callback
@@ -27,75 +27,90 @@ setup_logger()
 
 logger = logging.getLogger(__name__)
 
-async def shutdown_handler():
-    """Handle bot shutdown - close database connections."""
+async def main():
+    """Main function to run the bot."""
     try:
-        if mongodb_manager.connected:
-            await mongodb_manager.disconnect()
-        logger.info("🛑 Bot shutdown completed")
+        # Initialize database
+        db_success = await init_database()
+        
+        if USE_MONGODB:
+            if db_success:
+                logger.info("🗄️ Database: MongoDB")
+            else:
+                logger.info("🗄️ Database: SQLite (fallback)")
+        else:
+            logger.info("🗄️ Database: SQLite")
+        
+        # Create application
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Add command handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("settings", settings_command))
+        
+        # Admin commands
+        application.add_handler(CommandHandler("admin", admin_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("users", users_command))
+        application.add_handler(CommandHandler("broadcast", broadcast_command))
+        
+        # Callback query handlers
+        application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(?!admin_).*"))
+        application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin_.*"))
+        
+        # Message handlers for media
+        application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
+        
+        # Start the bot
+        logger.info("🚀 Video Encode Bot starting...")
+        logger.info("📡 Bot is ready to receive files!")
+        
+        # Initialize and start the application
+        await application.initialize()
+        await application.start()
+        
+        # Start polling
+        await application.updater.start_polling(
+            poll_interval=0.0,
+            timeout=10,
+            bootstrap_retries=5,
+            read_timeout=5,
+            write_timeout=5,
+            connect_timeout=5,
+            pool_timeout=5,
+        )
+        
+        # Keep the bot running
+        await application.updater.idle()
+        
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user")
     except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
-
-def main():
-    """Start the bot."""
-    async def run_bot():
+        logger.error(f"❌ Bot crashed during startup: {e}")
+    finally:
+        # Cleanup
         try:
-            # Initialize database
-            await init_database()
+            if 'application' in locals():
+                await application.stop()
+                await application.shutdown()
             
-            # Create application
-            application = Application.builder().token(BOT_TOKEN).build()
+            # Close MongoDB connection if connected
+            if mongodb_manager.connected:
+                await mongodb_manager.disconnect()
             
-            # Add command handlers
-            application.add_handler(CommandHandler("start", start_command))
-            application.add_handler(CommandHandler("help", help_command))
-            application.add_handler(CommandHandler("settings", settings_command))
-            
-            # Admin command handlers
-            application.add_handler(CommandHandler("admin", admin_command))
-            application.add_handler(CommandHandler("stats", stats_command))
-            application.add_handler(CommandHandler("users", users_command))
-            application.add_handler(CommandHandler("broadcast", broadcast_command))
-            
-            # Callback query handlers
-            application.add_handler(CallbackQueryHandler(handle_settings_callback, pattern="^(?!admin_).*"))
-            application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin_.*"))
-            
-            # Message handlers for media
-            application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
-            
-            # Start the bot
-            logger.info("🚀 Video Encode Bot starting...")
-            logger.info("📡 Bot is ready to receive files!")
-            logger.info(f"🗄️ Database: {'MongoDB' if mongodb_manager.connected else 'SQLite (fallback)'}")
-            
-            # Add shutdown handler
-            application.add_handler(CommandHandler("shutdown", shutdown_handler))
-            
-            # Use run_polling
-            await application.run_polling(
-                poll_interval=0.0,
-                timeout=10,
-                bootstrap_retries=5,
-                read_timeout=5,
-                write_timeout=5,
-                connect_timeout=5,
-                pool_timeout=5,
-            )
-            
+            logger.info("🛑 Bot shutdown completed")
         except Exception as e:
-            logger.error(f"❌ Bot crashed during startup: {e}")
-            await shutdown_handler()
-        finally:
-            await shutdown_handler()
+            logger.error(f"Error during shutdown: {e}")
 
-    # Run the bot
+def run_bot():
+    """Run the bot with proper event loop handling."""
     try:
-        asyncio.run(run_bot())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("🛑 Bot stopped by user")
     except Exception as e:
         logger.error(f"❌ Bot crashed: {e}")
 
 if __name__ == '__main__':
-    main()
+    run_bot()
