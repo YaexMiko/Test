@@ -3,7 +3,7 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 from core.downloader import download_media, get_file_size_mb
-from core.ffmpeg import encode_video
+from core.ffmpeg import encode_video, get_encoding_stats
 from core.uploader import upload_encoded_video
 from models.user_settings import get_user_settings
 from utils.progress import create_progress_message
@@ -50,10 +50,20 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_message.edit_text("❌ Failed to download file.")
             return
         
-        # Update status
-        await status_message.edit_text("🔄 Encoding video... This may take a while.")
+        # Get file info for better progress tracking
+        if file_obj and file_obj.file_size:
+            input_size_mb = get_file_size_mb(file_obj.file_size)
+            await status_message.edit_text(
+                f"🔄 **Starting Encoding**\n\n"
+                f"📁 Input size: {input_size_mb}MB\n"
+                f"🎬 Codec: {settings['vcodec']}\n"
+                f"📺 Resolution: {settings['resolution']}p\n"
+                f"🎨 Quality: CRF {settings['crf']}\n\n"
+                f"⏳ Initializing encoder...",
+                parse_mode='Markdown'
+            )
         
-        # Encode the video
+        # Encode the video with progress tracking
         output_path = await encode_video(file_path, settings, status_message)
         
         if not output_path:
@@ -61,16 +71,31 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleanup_temp_files([file_path])
             return
         
-        # Check output file size
-        if os.path.exists(output_path):
+        # Get encoding statistics
+        stats = await get_encoding_stats(output_path)
+        if stats and os.path.exists(output_path):
             output_size = os.path.getsize(output_path)
             output_size_mb = get_file_size_mb(output_size)
             
-            # Update status with output file info
-            await status_message.edit_text(
-                f"📤 Uploading encoded video...\n"
-                f"📁 Output size: {output_size_mb}MB"
-            )
+            # Calculate compression ratio
+            if file_obj and file_obj.file_size:
+                compression_ratio = ((file_obj.file_size - output_size) / file_obj.file_size) * 100
+                
+                await status_message.edit_text(
+                    f"✅ **Encoding Completed!**\n\n"
+                    f"📁 Output size: {output_size_mb}MB\n"
+                    f"📊 Compression: {compression_ratio:.1f}%\n"
+                    f"🎬 Codec: {stats.get('codec', 'unknown')}\n"
+                    f"📺 Resolution: {stats.get('resolution', 'unknown')}\n"
+                    f"⏱️ Duration: {stats.get('duration', '00:00:00')}\n\n"
+                    f"📤 Uploading...",
+                    parse_mode='Markdown'
+                )
+            else:
+                await status_message.edit_text(
+                    f"📤 Uploading encoded video...\n"
+                    f"📁 Output size: {output_size_mb}MB"
+                )
         
         # Upload the encoded video
         success = await upload_encoded_video(
@@ -82,7 +107,12 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         if success:
-            await status_message.edit_text("✅ Video encoded and uploaded successfully!")
+            await status_message.edit_text(
+                f"🎉 **Encoding Successful!**\n\n"
+                f"✅ Video processed and uploaded\n"
+                f"📁 Final size: {output_size_mb}MB\n"
+                f"🎬 Quality: {settings['vcodec']} @ {settings['resolution']}p"
+            )
         else:
             await status_message.edit_text("❌ Failed to upload encoded video.")
         
