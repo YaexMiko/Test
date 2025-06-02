@@ -35,8 +35,8 @@ async def main():
     # Callback query handler for settings
     application.add_handler(CallbackQueryHandler(handle_settings_callback))
     
-    # Message handlers for media
-    application.add_handler(MessageHandler(filters.VIDEO | filters.DOCUMENT, handle_media))
+    # Message handlers for media - Fix the DOCUMENT filter
+    application.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL, handle_media))
     
     # Start the bot
     logger.info("Starting bot...")
