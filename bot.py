@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 async def main():
     """Main function to run the bot."""
+    application = None
     try:
         # Initialize database
         db_success = await init_database()
@@ -66,12 +67,8 @@ async def main():
         logger.info("🚀 Video Encode Bot starting...")
         logger.info("📡 Bot is ready to receive files!")
         
-        # Initialize and start the application
-        await application.initialize()
-        await application.start()
-        
-        # Start polling
-        await application.updater.start_polling(
+        # Run the bot with polling
+        await application.run_polling(
             poll_interval=0.0,
             timeout=10,
             bootstrap_retries=5,
@@ -79,22 +76,18 @@ async def main():
             write_timeout=5,
             connect_timeout=5,
             pool_timeout=5,
+            drop_pending_updates=True
         )
-        
-        # Keep the bot running
-        await application.updater.idle()
         
     except KeyboardInterrupt:
         logger.info("🛑 Bot stopped by user")
     except Exception as e:
         logger.error(f"❌ Bot crashed during startup: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         # Cleanup
         try:
-            if 'application' in locals():
-                await application.stop()
-                await application.shutdown()
-            
             # Close MongoDB connection if connected
             if mongodb_manager.connected:
                 await mongodb_manager.disconnect()
