@@ -1,6 +1,11 @@
-# bot.py - Main entry point
 import asyncio
 import logging
+import sys
+import os
+
+# Add the current directory to Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from config import BOT_TOKEN
 from commands.start import start_command
